@@ -26,32 +26,32 @@ def StartingScreen():
 # Aliohjelma joka tulostaa juonikuvauksen
 def printStoryDesc():
     print("STORY SO FAR...")
-    time.sleep(2)
+    #time.sleep(2)
     print(" Samuel Blackwater has always been interested in strange tales and urban legends. He is a former")
-    time.sleep(1)
+    #time.sleep(1)
     print("professor of folkloristics in the Royal university of Southern Scotland. Recently he has been")
-    time.sleep(1)
+    #time.sleep(1)
     print("studying the rumors about the Castle of Gravehill and he decides to meet the last heir of the")
-    time.sleep(1)
+    #time.sleep(1)
     print("Gravehill family. Weeks pass and nothing is heard from the professor but since he didn't tell anyone")
-    time.sleep(1)
+    #time.sleep(1)
     print("about his expedition no one is concerned of his wellbeing. ")
     print("")
-    time.sleep(1)
+    #time.sleep(1)
     print(" One day Howard Blackwater receives a letter from his only living relative Uncle Samuel")
-    time.sleep(1)
+    #time.sleep(1)
     print("Blackwater. ”Hello my dearest nephew. If you are reading this letter and you have heard nothing of")
-    time.sleep(1)
+    #time.sleep(1)
     print("me past four weeks I am in grave danger. I have been investigating the strange rumors regarding")
-    time.sleep(1)
+    #time.sleep(1)
     print("the  Castle of Gravehill. The family of Gravehills has always been in the center of rumors around")
-    time.sleep(1)
+    #time.sleep(1)
     print("that area. But I don't believe these are just rumors. I am quite sure there are some really dark and")
-    time.sleep(1)
+    #time.sleep(1)
     print("evil things happening in the castle and I will find out what. Howard, you are my only hope please")
-    time.sleep(1)
+    #time.sleep(1)
     print("help me.” Afraid but twistedly intrigued Howard departs for the Castle of Gravehill.")
-    time.sleep(2)
+    #time.sleep(2)
           
     
 #Aliohjelma, joka tulostaa listan käytössä olevista komennoista
@@ -276,13 +276,13 @@ def printCharCurLocName():
         for row in result:
             print("%s"%(row))
     return
-    
+
 #Aliohjelma joka tarkistaa onko huoneessa vierailtu
 
 def checkIfRoomVisited():
     visited = False
     cur = db.cursor()
-    sql = "select visited from room where ID in (select location from playercharacter where ID = 1);"
+    sql = "select visited from room inner join playercharacter on playercharacter.location=room.ID where room.ID in (select location from playercharacter where ID = 1);"
     cur.execute(sql)
     result = cur.fetchall()
     if cur.rowcount>=1:
@@ -303,9 +303,9 @@ def changeRoomVisited():
     #result = cur.fetchall()
     #for row in result:
         #curoom = row[0]
-    sql ="update room set visited = 1 where ID in (select location from playercharacter where ID=1);"
+    sql ="update room inner join playercharacter on playercharacter.location=room.ID set visited=1 where room.ID in (select location from playercharacter where ID=1);"
     cur.execute(sql)
-    return    
+    return 
 
 
 
@@ -332,84 +332,84 @@ time.sleep(1)
 end = "temp"
 
 while (end != "quit"):
-    print("You are on the: ")
-    printCharCurLocName()
-    print("\n")
-  if checkRoomLight2() == True and checkIfRoomVisited() == 0:
+    if checkRoomLight2() == True and checkIfRoomVisited() == False:
+        printCharCurLocName()
         printCharCurLocDesc()
         changeRoomVisited()
+    elif checkRoomLight2()==False:
+        print("Darkness")
+        print("You can't see a thing in this pitch dark room!")
+    else:
+        printCharCurLocName()
     com="temp"
     #while-silmukka, missä pyöritään kunnes käyttäjä antaa lopetuskäskyn
-    while(end!="quit"):
-        command = input("What would you like to do? ")
-        if command=="":
-            print("Whatever")
-        else:
+    #while(end!="quit"):
+    command = input("What would you like to do? ")
+    if command=="":
+        print("Whatever")
+    else:
             #Tehdään komennosta lista esim. "take key", listan ensimmäinen alkio on "take" ja toinen alkio on "key"
-            comList = command.split()
+        comList = command.split()
             #Otetaan com muuttujaan listan ensimmäinen arvo
-            com = comList[0];
+        com = comList[0];
             #comList listasta poistetaan eka alkio
-            del comList[0]
+        del comList[0]
             #item muuttujan arvoksi tulee comList listasta merkkijonoksi muutettu merkkijono
-            item = " ".join(str(x)for x in comList).title()
+        item = " ".join(str(x)for x in comList).title()
             
         #if-rakenne, missä käydään kaikki komennot läpi
-        if com == "commands":
+    if com == "commands":
             printCommands()
-        elif com == "quit" or com == "q":
+    elif com == "quit" or com == "q":
             end="quit"
-        elif com == "examine":
+    elif com == "examine":
             printCharCurLocDesc()
-        elif com == "take":
+    elif com == "take":
             #Tarkistetaan että käskyssä annettu esine on huoneessa; Jos on, otetaan se
-            if checkIfUserWantedItemInRoom(item) == True:
+        if checkIfUserWantedItemInRoom(item) == True:
                 updateItemToPlayer(item)
-            else:
-                print(item+" can not be taken, because it is not in the room")
-        elif com == "inventory":
+        else:
+                print("You can't see any such item.")
+    elif com == "inventory":
             print("Player Items:")
             printItemsWithPlayer()
-        elif com == "open":
+    elif com == "open":
                 openDoor()
-        elif com == "drop":
+    elif com == "drop":
             #Tarkistetaan että käskyssä annettu esine on pelaajalla; Jos on, pudotetaan se
-            if checkIfUserHaveItem(item) == True:
-                    dropItemToCurRoom(item)
-            else:
-                print("You don't have such item.")
-        elif com == "east" or com == "e" or com == "west" or com == "w" or com == "north" or com == "n" or com == "south" or com == "s" or com == "down" or com == "d" or com == "up" or com == "u" or com == "northeast" or com == "ne" or com == "southeast" or com == "se" or com == "southwest" or com == "sw" or com == "northwest" or com== "nw": 
-            if com=="e":
-                com = "east";
-            if com=="w":
-                com = "west";
-            if com=="n":
-                com = "north";
-            if com=="s":
-                com = "south";
-            if com=="d":
-                com = "down";
-            if com=="u":
-                com = "up";
-            if com=="ne":
-                com = "northeast";
-            if com=="se":
-                com = "southeast";
-            if com=="sw":
-                com = "southwest";
-            if com=="nw":
-                com = "northwest";
-          
-            if directionPossibleIfYesMove(com) == True:
-                print("Your new room is: ")
-                printCharCurLocName()
-                print("\n")
-                printCharCurLocDesc()
-            else:
-                print("You cannot move to that direction")
-            
+        if checkIfUserHaveItem(item) == True:
+                dropItemToCurRoom(item)
         else:
-          print("I did not understand, please try again")  
+            print("You don't have such item.")
+    elif com == "east" or com == "e" or com == "west" or com == "w" or com == "north" or com == "n" or com == "south" or com == "s" or com == "down" or com == "d" or com == "up" or com == "u" or com == "northeast" or com == "ne" or com == "southeast" or com == "se" or com == "southwest" or com == "sw" or com == "northwest" or com== "nw": 
+        if com=="e":
+            com = "east";
+        if com=="w":
+            com = "west";
+        if com=="n":
+            com = "north";
+        if com=="s":
+            com = "south";
+        if com=="d":
+            com = "down";
+        if com=="u":
+            com = "up";
+        if com=="ne":
+            com = "northeast";
+        if com=="se":
+            com = "southeast";
+        if com=="sw":
+            com = "southwest";
+        if com=="nw":
+            com = "northwest";
+          
+        if directionPossibleIfYesMove(com) == True:
+            print("\n")
+        else:
+            print("You cannot move to that direction")
+            
+    else:
+        print("I did not understand, please try again")  
            
 
 # Perutaan tietokantaan tehdyt muutokset
