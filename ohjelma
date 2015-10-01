@@ -276,6 +276,36 @@ def printCharCurLocName():
         for row in result:
             print("%s"%(row))
     return
+    
+#Aliohjelma joka tarkistaa onko huoneessa vierailtu
+
+def checkIfRoomVisited():
+    visited = False
+    cur = db.cursor()
+    sql = "select visited from room where ID in (select location from playercharacter where ID = 1);"
+    cur.execute(sql)
+    result = cur.fetchall()
+    if cur.rowcount>=1:
+        cur.execute(sql)
+        for row in result:
+            if row[0]==1:
+                visited=True
+    else:
+        visited=False
+    return visited
+
+
+#aliohjelma joka muuttaa huoneen käydyksi jos siellä ei ole käyty
+def changeRoomVisited():
+    cur = db.cursor()
+    #sql ="select location from playercharacter where ID = 1";
+    #cur.execute(sql)
+    #result = cur.fetchall()
+    #for row in result:
+        #curoom = row[0]
+    sql ="update room set visited = 1 where ID in (select location from playercharacter where ID=1);"
+    cur.execute(sql)
+    return    
 
 
 
@@ -305,8 +335,9 @@ while (end != "quit"):
     print("You are on the: ")
     printCharCurLocName()
     print("\n")
-    if checkRoomLight2() == True:
+  if checkRoomLight2() == True and checkIfRoomVisited() == 0:
         printCharCurLocDesc()
+        changeRoomVisited()
     com="temp"
     #while-silmukka, missä pyöritään kunnes käyttäjä antaa lopetuskäskyn
     while(end!="quit"):
