@@ -241,8 +241,27 @@ def dropKey(item):
             dropItemToCurRoom(item)
         else:
             print("You don't have such item.")
+    return
 
-
+def useKey(Object,item):
+    cur = db.cursor()
+    if checkKey() == True:
+        sql = "select name from itemtypes inner join items on itemtypes.ID=items.itemtype where name like '%key%' and withPlayer=1;"
+        cur.execute(sql)
+        result = cur.fetchall()
+        if cur.rowcount >1:
+            print("Which key you want to use?")
+        else:
+            if cur.rowcount == 1:
+                for row in result:
+                    item="%s"%(row)
+            if checkIfUserHaveItem(item)==True:
+                openDoor(Object,item)
+            else:
+                print("You don't have the %s."%(item.lower()))
+    else:
+        print("You don't have any keys.")
+    return
 
 # Drops item to player's current location, item's name as a parameter
 def dropItemToCurRoom(item):
@@ -278,50 +297,105 @@ def roomOpenInDirection(direction):
     return roomDirectionOpen
 
 
+def checkIfObjectInRoom(object1):
+    objectInRoom = False
+    cur = db.cursor()
+    sql = "select name from objects where location in (select location from playercharacter where ID=1) and name='"+object1+"';"
+    cur.execute(sql)
+    result = cur.fetchall()
+    if cur.rowcount>=1:
+        for row in result:
+            if row[0]==object1:
+                objectInRoom = True
+    return objectInRoom
 
+def door(Object,item):
+    cur = db.cursor()
+    sql = "select unlocked from doors inner join objects on doors.ID=objects.ID where name='"+Object+"' and location in (select location from playercharacter where ID=1);"
+    cur.execute(sql)
+    result=cur.fetchall()
+    if cur.rowcount>=1:
+        for row in result:
+            unlocked=int("%s"%(row))
+    if unlocked==0:
+        sql = "select neededkey from doors inner join objects on doors.ID=objects.ID where name='"+Object+"' and location in (select location from playercharacter where ID=1);"
+        cur.execute(sql)
+        result = cur.fetchall()
+        if cur.rowcount>=1:
+            for row in result:
+                neededKey="%s"%(row)
+        if neededKey==item or item=="":
+            sql = "select name from itemtypes inner join items on itemtypes.ID=items.itemtype where name='"+neededKey+"' and withPlayer=1;"
+            cur.execute(sql)
+            result = cur.fetchall()
+            if cur.rowcount>=1:
+                    for row in result:
+                        if row[0]==neededKey:
+                            sql="select way from doors inner join objects on doors.ID=objects.ID where name='"+Object+"' and location in (select location from playercharacter where ID=1);"
+                            cur.execute(sql)
+                            result = cur.fetchall()
+                            if cur.rowcount>=1:
+                                    for row in result:
+                                        way="%s"%(row)
+                            sql = "update map inner join room on map.room=room.ID set "+way+"Open=1 where room.ID in (select location from playercharacter where ID=1);"
+                            cur.execute(sql)
+                            print("You unlock the %s."%(Object))
+                            sql = "update items inner join itemtypes on items.itemtype=itemtypes.ID set withPlayer=0 where name='"+neededKey+"' and withPlayer=1;"
+                            cur.execute(sql)
+                            sql = "update doors inner join objects on doors.ID=objects.ID set unlocked=1 where name='"+Object+"' and location in (select location from playercharacter where ID=1);"
+                            cur.execute(sql)
+            elif item!="":
+                print("You don't have the %s."%(neededKey.lower()))
+            else:
+                print("You don't have the key to this %s."%(Object))
+        else:
+            print("Your key doesn't fit the lock.")
+    else:
+        print("There's no %s to unlock."%(Object))
+    return
+        
 
+        
 
 # Subprogram for opening doors CheckCurLoc() == "87"
-def openDoor(object1):
-    Unlocked=doorsUnlocked
+def openDoor(Object,item):
+    plural=False
     cur = db.cursor()
-    if checkKey() == True:
-        if object1=="double doors" or object1=="doors" or object1=="door":
-            if "5" in whichKey() and CheckCurLoc() == "87" and doorsUnlocked == 0:
-                if item=="Golden key" or item=="Key" or item=="":
-                    sql = "update map set northOpen = 1 where room = 87;"
-                    cur.execute(sql)
-                    sql = "update items set withPlayer = null where itemtype = 5;"
-                    cur.execute(sql)
-                    print("You unlock the double doors with the golden key.")
-                    Unlocked=1
-                else:
-                    print("Your key doesn't fit the double doors' lock.")
-            elif "5" not in whichKey() and CheckCurLoc() == "87" and doorsUnlocked == 0 and item != "Golden key":
-                print("Your key doesn't fit the double doors' lock.")
-            elif "5" not in whichKey() and CheckCurLoc() == "87" and doorsUnlocked == 0 and item == "Golden key":
-                print("You don't have the golden key.")
-            elif CheckCurLoc() != "87" or doorsUnlocked == 1:
-                print("There are no doors to unlock.")
-        elif object1=="":
-            print("What do you wish to unlock?")
-        else:
-            print("Can't see such a thing!")
+    if len(Object)>0:
+        if Object[-1]=="s":
+            Object=Object[:-1]
+            plural=True
+    if checkIfObjectInRoom(Object)==True:
+            if checkKey() == True:
+                door(Object,item)
+            else:
+                print("You don't have any keys.")
     else:
-        print("You don't have any keys.")
-    return Unlocked
+        if plural==True:
+            print("There are no %ss to unlock."%(Object))
+        else:
+            print("There's no %s to unlock."%(Object))
+    return
         
    
         
 def directionPossibleIfYesMove(direction):
     moveOk = False
-    if roomInDirection(direction) != "null" and roomOpenInDirection(direction) == 1:
-        cur = db.cursor()
+    cur = db.cursor()
+    if roomInDirection(direction) != None and roomOpenInDirection(direction) == 1:
         sql = "update playercharacter set location = "+str(roomInDirection(direction))+" where id=1;"
         cur.execute(sql)
         moveOk = True
-    elif CheckCurLoc() == "87" and roomOpenInDirection(direction) == 0:
-        moveOk="lockedDoubleDoors"
+    elif roomInDirection(direction) != None and roomOpenInDirection(direction) == 0:
+        sql = "select name from objects inner join doors on objects.ID=doors.ID where location in (select location from playercharacter where ID=1) and way='"+direction+"';"
+        cur.execute(sql)
+        result=cur.fetchall()
+        if cur.rowcount>=1:
+            for row in result:
+                Object="%s"%(row)
+        print("The %s is locked."%(Object))
+    else:
+        print("You can't go that way!")
     return moveOk
 
 def checkKey():
@@ -388,26 +462,59 @@ def displayStatus():
     cur = db.cursor()
     sql = "select health from playercharacter where ID=1;"
     cur.execute(sql)
-    health=cur.fetchall()
+    result=cur.fetchall()
+    if cur.rowcount>=1:
+        for row in result:
+            health="%s"%(row)
     sql = "select sanity from playercharacter where ID=1;"
     cur.execute(sql)
-    sanity=cur.fetchall()
-    print(health,sanity)
+    result=cur.fetchall()
+    if cur.rowcount>=1:
+        for row in result:
+            sanity="%s"%(row)
+    print("Health: %s  Sanity: %s"%(health,sanity))
+    return
 
 def heal(item):
     cur = db.cursor()
     sql = "select healthEffect from healing inner join itemtypes on healing.ID=itemtypes.ID where name='"+item+"';"
     cur.execute(sql)
-    healingEffect=cur.fetchall()
+    result=cur.fetchall()
+    if cur.rowcount>=1:
+        for row in result:
+            healingEffect=int("%s"%(row))
     sql = "select health from playercharacter where ID=1;"
     cur.execute(sql)
-    health=cur.fetchall()
+    result=cur.fetchall()
+    if cur.rowcount>=1:
+        for row in result:
+            health=int("%s"%(row))
     newHealth=health+healingEffect
+    sql = "select sanityEffect from healing inner join itemtypes on healing.ID=itemtypes.ID where name='"+item+"';"
+    cur.execute(sql)
+    result=cur.fetchall()
+    if cur.rowcount>=1:
+        for row in result:
+            sanityEffect=int("%s"%(row))
+    sql = "select sanity from playercharacter where ID=1;"
+    cur.execute(sql)
+    result=cur.fetchall()
+    if cur.rowcount>=1:
+        for row in result:
+            sanity=int("%s"%(row))
+    newSanity=sanity+sanityEffect
     if newHealth>100:
         sql = "update playercharacter set health=100;"
         cur.execute(sql)
     else:
-        sql = "update playercharacter set health="+newHealth+";"
+        sql = "update playercharacter set health=%d;"%(newHealth)
+        cur.execute(sql)
+    if newSanity>100:
+        sql = "update playercharacter set sanity=100;"
+        cur.execute(sql)
+    else:
+        sql = "update playercharacter set sanity=%d;"%(newSanity)
+        cur.execute(sql)
     return
 
     
@@ -431,7 +538,6 @@ print("\n")
 print("Welcome to the Castle Gravehill!\n")
 time.sleep(1)
 end = "temp"
-doorsUnlocked=0
 
 while (end != "quit"):
     if checkRoomLight() == True and checkIfRoomVisited() == False:
@@ -448,7 +554,7 @@ while (end != "quit"):
     com="temp"
     move_look=False
     while move_look == False and end != "quit":
-        object1=""
+        withSentence=False
         command = input("What would you like to do? ")
         if command=="":
             print("Whatever")
@@ -474,99 +580,109 @@ while (end != "quit"):
                 comList.remove("with")
                 objectList=articles(objectList)
                 object1=" ".join(str(x) for x in objectList)
-            if "with" in comList:
-                com="error"
+                withSentence=True
+                if "with" in comList:
+                    com="error"
             comList=articles(comList)
-            #Then we save the items name which is being used
             item = first_upper(" ".join(str(x)for x in comList))
             
         #if-rakenne, missä käydään kaikki komennot läpi
-        if com == "commands":
+            if com == "commands":
                 printCommands()
-        elif com == "quit" or com == "q":
+            elif com == "quit" or com == "q":
                 end="quit"
-        elif com == "look":
-            print("Your current location is:\n")
-            printCharCurLocName()    
-            printCharCurLocDesc()
-            displayItemsInRoom()
-        elif com == "take":
-            if item == "Key":
-                takeKey(item)
-                
+            elif com == "look":
+                print("Your current location is:\n")
+                printCharCurLocName()    
+                printCharCurLocDesc()
+                displayItemsInRoom()
+            elif com == "take":
+                if item == "Key":
+                    takeKey(item)
+                elif item=="":
+                    print("What do you want to take?")
                    
             #Tarkistetaan että käskyssä annettu esine on huoneessa; Jos on, otetaan se
-            elif checkIfItemInRoom(item) == True:
-                updateItemToPlayer(item)
-            else:
+                elif checkIfItemInRoom(item) == True:
+                    updateItemToPlayer(item)
+                else:
                     print("You can't see such item.")
-        elif com == "inventory":
+            elif com == "inventory":
                 print("Player Items:")
                 inventory()
-        elif com == "unlock":
-            if object1=="":
-                object1=item.lower()
-                item=""
-                doorsUnlocked=openDoor(object1)
-            else:
-                if item=="":
-                    print("With what you want to unlock?")
-                elif item!="Key" and item!="Golden key" and item!="Silver key" and item!="Brass key" and item!="Iron key":
-                    print("You can't do that")
+            elif com == "unlock":
+                if withSentence==False:
+                    object1=item.lower()
+                    if object1=="":
+                        print("What do you wish to unlock?")
+                    else:
+                        item=""
+                        openDoor(object1,item)
                 else:
-                    doorsUnlocked=openDoor(object1)
-        elif com == "drop":
+                    if object1=="":
+                        print("What do you wish to unlock?")
+                    else:
+                        if item=="":
+                            print("With what you want to unlock?")
+                        elif item!="Key" and item!="Golden key" and item!="Silver key" and item!="Brass key" and item!="Iron key":
+                            print("You can't do that")
+                        elif item=="Key":
+                            useKey(object1,item)
+                        else:
+                            openDoor(object1,item)
+            elif com == "drop":
 
-            if item=="Key":
-                dropKey(item)
-
+                if item=="Key":
+                    dropKey(item)
+                elif item=="":
+                    print("What do you wish to drop?")
             
             #Tarkistetaan että käskyssä annettu esine on pelaajalla; Jos on, pudotetaan se
-            elif checkIfUserHaveItem(item) == True:
-                    dropItemToCurRoom(item)
-            else:
-                print("You don't have such item.")
-        elif com=="status":
-            displayStatus()
+                elif checkIfUserHaveItem(item) == True:
+                        dropItemToCurRoom(item)
+                else:
+                    print("You don't have such item.")
+            elif com=="status":
+                displayStatus()
 
-        elif com=="use":
-            if item=="Bandages":
-                heal(item)
-            else:
-                print("You can't do that.")
+            elif com=="use":
+                if item=="Bandages":
+                    heal(item)
+                    print("You bind your wounds and feel a bit of relief.\nHealth +50")
+                elif item=="Morphine":
+                    heal(item)
+                    print("You inject the morphine into your arm, and the sudden rush of dopamine fills your brain. It doesn't feel that bad anymore...\nHealth +20, Sanity +50")
+                else:
+                    print("You can't do that.")
         
-        elif com == "east" or com == "e" or com == "west" or com == "w" or com == "north" or com == "n" or com == "south" or com == "s" or com == "down" or com == "d" or com == "up" or com == "u" or com == "northeast" or com == "ne" or com == "southeast" or com == "se" or com == "southwest" or com == "sw" or com == "northwest" or com== "nw": 
-            if com=="e":
-                com = "east";
-            if com=="w":
-                com = "west";
-            if com=="n":
-                com = "north";
-            if com=="s":
-                com = "south";
-            if com=="d":
-                com = "down";
-            if com=="u":
-                com = "up";
-            if com=="ne":
-                com = "northeast";
-            if com=="se":
-                com = "southeast";
-            if com=="sw":
-                com = "southwest";
-            if com=="nw":
-                com = "northwest";
+            elif com == "east" or com == "e" or com == "west" or com == "w" or com == "north" or com == "n" or com == "south" or com == "s" or com == "down" or com == "d" or com == "up" or com == "u" or com == "northeast" or com == "ne" or com == "southeast" or com == "se" or com == "southwest" or com == "sw" or com == "northwest" or com== "nw": 
+                if com=="e":
+                    com = "east";
+                if com=="w":
+                    com = "west";
+                if com=="n":
+                    com = "north";
+                if com=="s":
+                    com = "south";
+                if com=="d":
+                    com = "down";
+                if com=="u":
+                    com = "up";
+                if com=="ne":
+                    com = "northeast";
+                if com=="se":
+                    com = "southeast";
+                if com=="sw":
+                    com = "southwest";
+                if com=="nw":
+                    com = "northwest";
           
-            if directionPossibleIfYesMove(com) == True:
-                print("\n")
-                move_look = True
-            elif directionPossibleIfYesMove(com) == "lockedDoubleDoors":
-                print("The double doors are locked.")
-            else:
-                print("You can't go that way!")
+                if directionPossibleIfYesMove(com) == True:
+                    print("\n")
+                    move_look = True
             
-        else:
-            print("I did not understand, please try again")  
+            else:
+                print("I did not understand, please try again")  
            
 
 # Perutaan tietokantaan tehdyt muutokset
