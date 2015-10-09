@@ -106,7 +106,6 @@ def first_lower(word):
 
 # Subprogram yhat checks characters current location
 def CheckCurLoc():
-    CurRoom=0
     cur = db.cursor()
     sql = "select location from playercharacter where ID=1;"
     cur.execute(sql)
@@ -283,7 +282,9 @@ def roomInDirection(direction):
         cur.execute(sql)
         for row in result:
             roomDirection = row[0]
-    return roomDirection
+        return roomDirection
+    else:
+        return
     
 def roomOpenInDirection(direction):
     cur = db.cursor()
@@ -517,6 +518,316 @@ def heal(item):
         cur.execute(sql)
     return
 
+def CheckMonsterRoom(monster):
+    cur = db.cursor()
+    sql = "select location from monsters where ID=%d;"%(monster)
+    cur.execute(sql)
+    result=cur.fetchall()
+    if cur.rowcount>=1:
+        for row in result:
+            monsterLocation="%s"%(row)
+    return monsterLocation
+
+def CheckWhereMonsters():
+    locationsOfMonsters=[]
+    cur = db.cursor()
+    sql = "select location from monsters;"
+    cur.execute(sql)
+    result=cur.fetchall()
+    if cur.rowcount>=1:
+        for row in result:
+            locationsOfMonsters.append("%s"%(row))
+    return locationsOfMonsters
+
+
+def monsterMove():
+    MonsterIDs=[]
+    cur = db.cursor()
+    directions='north south west east northwest northeast southwest southeast'.split()
+    sql = "select count(*) from monsters;"
+    cur.execute(sql)
+    result=cur.fetchall()
+    if cur.rowcount>=1:
+        for row in result:
+            numberOfMonsters=int("%s"%(row))
+    sql = "select ID from monsters group by ID asc;"
+    cur.execute(sql)
+    result=cur.fetchall()
+    if cur.rowcount>=1:
+        for row in result:
+            MonsterIDs.append("%s"%(row))
+    
+    for x in range(0,numberOfMonsters):
+        moved=False
+        surroundingRooms=[]
+        for i in range(0,8):
+            sql = "select "+directions[i]+" from map inner join room on map.room=room.ID inner join monsters on monsters.location=room.ID where monsters.ID=%d;"%(int(MonsterIDs[x]))
+            cur.execute(sql)
+            result=cur.fetchall()
+            if cur.rowcount>=1:
+                for row in result:
+                    surroundingRooms.append("%s"%(row))
+        forbiddenRooms=CheckWhereMonsters()
+        if len(forbiddenRooms)<8:
+            if CheckCurLoc() in surroundingRooms and CheckCurLoc() not in forbiddenRooms:
+                sql = "update monsters set location=%r where ID=%r;"%(CheckCurLoc(),int(MonsterIDs[x]))
+                cur.execute(sql)
+                moved=True
+                print(CheckCurLoc())
+            elif CheckMonsterRoom(int(MonsterIDs[x]))!= CheckCurLoc():
+                while moved==False:
+                    rndDirection=directions[random.randint(0,len(directions)-1)]
+                    sql = "select "+rndDirection+" from map inner join room on map.room=room.ID inner join monsters on monsters.location=room.ID where monsters.ID=%d;"%(int(MonsterIDs[x]))
+                    cur.execute(sql)
+                    result=cur.fetchall()
+                    if cur.rowcount>=1:
+                        for row in result:
+                            newRoom="%s"%(row)
+                    print(newRoom)
+                    if newRoom != 'None' and newRoom not in forbiddenRooms:
+                        sql = "update monsters set location=%r where ID=%r;"%(newRoom,int(MonsterIDs[x]))
+                        cur.execute(sql)
+                        moved=True
+    return
+
+def checkMonstersInCurRoom():
+    monstersInCurRoom=[]
+    cur=db.cursor()
+    sql="select name from monstertype inner join monsters on monstertype.ID=monsters.type where location in (select location from playercharacter where ID=1);"
+    cur.execute(sql)
+    result=cur.fetchall()
+    if cur.rowcount>=1:
+        for row in result:
+            monstersInCurRoom.append("%s"%(row))
+    return monstersInCurRoom
+
+def Monsters():
+    if checkMonstersInCurRoom()!=[]:
+        for monster in checkMonstersInCurRoom():
+            if monster=='Walking Corpse':
+                WalkingCorpse()
+        
+
+def DireWolf():
+    cur = db.cursor()
+    
+def WalkingCorpse():
+    cur = db.cursor()
+    sql = "select description from monstertype where name='Walking Corpse';"
+    cur.execute(sql)
+    result=cur.fetchall()
+    if cur.rowcount>=1:
+        for row in result:
+            description="%s"%(row)
+    print(description)
+    battle()
+    return
+
+def displayWeaponsAndAmmo():
+    cur = db.cursor()
+    sql = "select name,loadedammo from itemtypes inner join items on itemtypes.ID=items.itemtype where withPlayer=1 and loadedammo>=0 group by name asc;"
+    cur.execute(sql)
+    result=cur.fetchall()
+    print(result)
+    if cur.rowcount>=1:
+        for row in result:
+            print("%s:%s"%(row[0],row[1]),end="   ")
+    print()
+    sql = "select bullets,shells from playercharacter where ID=1 group by bullets,shells;"
+    cur.execute(sql)
+    result=cur.fetchall()
+    if cur.rowcount>=1:
+        for row in result:
+            bullets=int("%s"%(row[0]))
+            shells=int("%s"%(row[1]))
+    if bullets>0:
+        print("Bullets in inventory:%d"%(bullets),end="   ")
+    if shells>0:
+        print("Shotgun shells in inventory:%d"%(shells),end="   ")
+    print()
+    return
+
+def battle():
+    while checkMonstersInCurRoom()!=[]:
+        succesfulCommand=False
+        while succesfulCommand==False:
+            print("\nWhat are you going to do!?")
+            choice=input("1.Attack\n2.Reload\n3.Use item\n4.Run!\n")
+            if choice=="1":
+                if checkIfUserHaveItem("Sword")==True or checkIfUserHaveItem("Axe")==True or checkIfUserHaveItem("Revolver")==True or checkIfUserHaveItem("Double barreled shotgun")==True or checkIfUserHaveItem("Sword of uncreation")==True:
+                    displayWeaponsAndAmmo()
+                    weapon=first_upper(input("What weapon do you want to use?"))
+                    if weapon=="Shotgun":
+                        weapon="Double barreled shotgun"
+                    if checkIfUserHaveItem(weapon)==True:
+                        attack(weapon)
+                        succesfulCommand=True
+                    elif checkIfUserHaveItem(weapon)==False and weapon!="Back":
+                        print("You don't have such weapon in your possession!")
+            
+                else:
+                    print("You don't have any weapons!")
+            elif choice=="2":
+                if checkIfUserHaveItem("Revolver")==True or checkIfUserHaveItem("Double barreled shotgun")==True:
+                    displayWeaponsAndAmmo()
+                    weapon=first_upper(input("What weapon do you want to reload?"))
+                    if weapon=="Shotgun":
+                        weapon="Double barreled shotgun"
+                    print(weapon)
+                    if checkIfUserHaveItem(weapon)==True:
+                        if weapon=="Revolver":
+                            if Checkloadedammo(weapon)==checkMaxAmmo(weapon):
+                                print("Your revolver is already full of ammo!")
+                            elif checkAmmo("bullets")>0:
+                                reload(weapon)
+                                succesfulCommand=True
+                            else:
+                                print("You don't have any bullets left.")
+                        elif weapon=="Double barreled shotgun":
+                            if Checkloadedammo(weapon)==checkMaxAmmo(weapon):
+                                print("Your shotgun is already full of ammo!")
+                            elif checkAmmo("shells")>0:
+                                reload(weapon)
+                                succesfulCommand=True
+                            else:
+                                print("You don't have any shotgun shells left.")
+                    elif checkIfUserHaveItem(weapon)==False and weapon!="Back":
+                        print("You don't have such weapon in your possession!")
+                else:
+                    print("You don't have weapons to reload!")
+        checkHealth()
+    return
+
+def checkHit(weapon):
+    hit=False
+    cur = db.cursor()
+    sql = "select accuracy from weapons inner join itemtypes on weapons.ID=itemtypes.ID where name='"+weapon+"';"
+    cur.execute(sql)
+    result=cur.fetchall()
+    if cur.rowcount>=1:
+        for row in result:
+            accuracy=int("%s"%(row))
+    if accuracy>=random.randint(1,20):
+        hit=True
+    return hit
+
+def damage(weapon):
+    cur = db.cursor()
+    sql = "select damage from weapons inner join itemtypes on weapons.ID=itemtypes.ID where name='"+weapon+"';"
+    cur.execute(sql)
+    result=cur.fetchall()
+    if cur.rowcount>=1:
+        for row in result:
+            damage=int("%s"%(row))
+    sql = "select health from monsters where location in (select location from playercharacter where ID=1);"
+    cur.execute(sql)
+    result=cur.fetchall()
+    if cur.rowcount>=1:
+        for row in result:
+            health=int("%s"%(row))
+    sql = "update monsters set health=%d where location in (select location from playercharacter where ID=1);"%(health-damage)
+    cur.execute(sql)
+    return damage
+
+def checkHealth():
+    cur = db.cursor()
+    sql = "select health from monsters where location in (select location from playercharacter where ID=1);"
+    cur.execute(sql)
+    result=cur.fetchall()
+    if cur.rowcount>=1:
+        for row in result:
+            health=int("%s"%(row))
+    if health<=0:
+        sql = "delete from monsters where location in (select location from playercharacter where ID=1);"
+        cur.execute(sql)
+        print("The horrid creature crumbles before you, and thick cloud of black smoke flees its body leaving only pile of dust behind...")
+    return
+
+def attack(weapon):
+    cur = db.cursor()
+    sql = "select loadedammo from items inner join itemtypes on items.itemtype=itemtypes.ID where name='"+weapon+"' and withPlayer=1;"
+    cur.execute(sql)
+    result=cur.fetchall()
+    if cur.rowcount>=1:
+        for row in result:
+            ammo="%s"%(row)
+    if ammo=='None':
+        if checkHit(weapon)==True:
+            damageDone=damage(weapon)
+            print("Your strike hits the target doing %d points of damage!"%(damageDone))
+        else:
+            print("You miss the target!")
+    else:
+        ammo=int(ammo)
+        if ammo>0:
+            if checkHit(weapon)==True:
+                damageDone=damage(weapon)
+                print("Your shot hits the target doing %d points of damage!"%(damageDone))
+            else:
+                print("Your shot misses the target!")
+            if weapon=="Revolver":
+                sql = "update items inner join itemtypes on items.itemtype=itemtypes.ID set loadedammo=loadedammo-1 where name='"+weapon+"';"
+                cur.execute(sql)
+            elif weapon=="Double barreled shotgun":
+                sql = "update items inner join itemtypes on items.itemtype=itemtypes.ID set loadedammo=loadedammo-2 where name='"+weapon+"';"
+                cur.execute(sql)
+        else:
+            print("You don't have any ammo in your weapon. Reload it!")
+    return
+
+def checkMaxAmmo(weapon):
+    cur = db.cursor()
+    sql = "select MAXammo from weapons inner join itemtypes on weapons.ID=itemtypes.ID where name='"+weapon+"';"
+    cur.execute(sql)
+    result=cur.fetchall()
+    if cur.rowcount>=1:
+        for row in result:
+            MaxAmmo=int("%s"%(row))
+    print(MaxAmmo)
+    return MaxAmmo
+
+def checkAmmo(ammotype):
+    cur = db.cursor()
+    sql = "select "+ammotype+" from playercharacter where ID=1;"
+    cur.execute(sql)
+    result=cur.fetchall()
+    if cur.rowcount>=1:
+        for row in result:
+            ammo=int("%s"%(row))
+    print("ammo",ammo)
+    return ammo
+
+def reload(weapon):
+    cur = db.cursor()
+    if weapon=="Revolver":
+        while Checkloadedammo(weapon)<checkMaxAmmo(weapon) and checkAmmo("bullets")>0:
+                sql = "update playercharacter set bullets=bullets-1 where ID=1;"
+                cur.execute(sql)
+                sql = "update items inner join itemtypes on items.itemtype=itemtypes.ID set loadedammo=loadedammo+1 where name='"+weapon+"' and withPlayer=1;"
+                cur.execute(sql)
+        print("With shaking hands, you nervously reload the revolver.")
+    elif weapon=="Double barreled shotgun":
+        while Checkloadedammo(weapon)<checkMaxAmmo(weapon) and checkAmmo("shells")>0:
+                sql = "update playercharacter set shells=shells-1 where ID=1;"
+                cur.execute(sql)
+                sql = "update items inner join itemtypes on items.itemtype=itemtypes.ID set loadedammo=loadedammo+1 where name='"+weapon+"' and withPlayer=1;"
+                cur.execute(sql)           
+        print("With shaking hands, you nervously reload the double barreled shotgun.")
+    return
+    
+        
+def Checkloadedammo(weapon):
+    cur = db.cursor()
+    sql = "select loadedammo from items inner join itemtypes on itemtypes.ID=items.itemtype where name='"+weapon+"' and withPlayer=1;"
+    cur.execute(sql)
+    result=cur.fetchall()
+    print (result)
+    if cur.rowcount>=1:
+        for row in result:
+            loadedammo=int("%s"%(row))
+    print(loadedammo)
+    return loadedammo
+
     
 #PÄÄOHJELMA ALKAA
 
@@ -680,7 +991,12 @@ while (end != "quit"):
                 if directionPossibleIfYesMove(com) == True:
                     print("\n")
                     move_look = True
-            
+            elif com=="monstertest":
+                Monsters()
+            elif com=="monstermove":
+                monsterMove()
+            elif com=="weapons":
+                displayWeaponsAndAmmo()
             else:
                 print("I did not understand, please try again")  
            
