@@ -37,14 +37,16 @@ def GameOver():
       ░       ░  ░       ░      ░  ░       ░ ░        ░     ░  ░   ░     
                                                      ░                   ''')
     db.rollback()
+    Trigger=False
+    Trigger2=False
     end="no answer"
     while end=="no answer":
         playAgain=input("Do you want relive the horror? Y/N\n")
         if playAgain=="y" or playAgain=="Y":
-            end=False
+            end="temp"
         elif playAgain=="n" or playAgain=="N":
-            end=True
-    return end
+            end="quit"
+    return end,Trigger,Trigger2
 
 # Displays backstory
 def printStoryDesc():
@@ -108,6 +110,7 @@ def printCommands():
 def parser(command):
     Items=['']
     withSentence=False
+    OnSentence=False
     object1=""
     comList = command.split()
     comList=lower_case(comList)
@@ -119,7 +122,7 @@ def parser(command):
     #Deletes the command from command list
         del comList[0]
         if len(comList)!=0:
-            if comList[0]=="up":
+            if comList[0]=="up" or comList[0]=="on" or comList[0]=="off" or comList[0]=="down":
                 com=com+" "+comList[0]
                 del comList[0]
     #This line takes care of the commands that include "with", for example "open door with key"
@@ -137,8 +140,20 @@ def parser(command):
             objectList=articles(objectList)
             object1=" ".join(str(x) for x in objectList)
             withSentence=True
-        if "with" in comList:
-            com="error"
+            if "with" in comList:
+                com="error"
+        if "on" in comList:
+            objectList=[]
+            while comList.index("on") != 0:
+                word = comList[0]
+                objectList.append(word)
+                comList.remove(comList[0])
+            comList.remove("on")
+            objectList=articles(objectList)
+            object1=" ".join(str(x) for x in objectList)
+            OnSentence=True
+            if "on" in comList:
+                com="error"
         Items=[]
         if "and" in comList:
             for i in range(0,1+comList.count("and")):
@@ -155,10 +170,12 @@ def parser(command):
                 item=first_upper(" ".join(str(x) for x in itemList))
                 Items.append(item)
         else:
+            if OnSentence==True and "of" in comList:
+                     comList=articles(comList)
             comList=articles(comList)
             item=first_upper(" ".join(str(x) for x in comList))
             Items.append(item)
-    return com,object1,withSentence,Items
+    return com,object1,withSentence,OnSentence,Items
 
 def articles(List):
     if "the" in List:
@@ -209,6 +226,9 @@ def printCharCurLocDesc():
     if cur.rowcount>=1: 
         for row in result:
             print("%s"%(row))
+    if CheckCurLoc()=="24":
+        if roomOpenInDirection("west")==True:
+            print("There's a hole in the western wall behind the bed.")
     return
 
 # Subprogram that updates item to be with player, item's name as a parameter
@@ -267,6 +287,19 @@ def checkIfUserHaveItem(item):
                 itemWithPlayer=True
     return itemWithPlayer
 
+def wellOpen():
+    wellOpen=False
+    cur = db.cursor()
+    sql = "select downOpen from map where room=13"
+    cur.execute(sql)
+    result = cur.fetchall()
+    if cur.rowcount>=1:
+        cur.execute(sql)
+        for row in result:
+            if row[0]==1:
+                wellOpen = True
+    return wellOpen
+
 def displayItemsInRoom():
     cur = db.cursor()
     sql = "select name from itemtypes inner join items on itemtypes.ID=items.itemtype where location in (select location from playercharacter where ID=1);"
@@ -274,7 +307,13 @@ def displayItemsInRoom():
     result=cur.fetchall()
     if cur.rowcount>=1:
         for row in result:
-            print ("There's %s here"%(first_lower("%s"%(row))))
+            row="%s"%(row)
+            if row=="Rope" and CheckCurLoc()=="43" and checkIfRoomVisited()==False:
+                print("A rope with a hangman's noose is hanging from the ceiling, swinging ominously amongst the shadows.")
+            elif row=="Rope" and CheckCurLoc()=="13" and wellOpen()==True:
+                print("There's a rope tied on the edge of the well.")
+            else:
+                print ("There's %s here"%(first_lower("%s"%(row))))
     return
 
 # Subprogram that checks if the room is illuminated
@@ -289,10 +328,23 @@ def checkRoomLight():
         for row in result:
             if row[0]==1:
                 LightOn=True
-    else:
-        LightOn=False
+    if LightOn==False:
+        if checkIfUserHaveItem("Lantern")==True:
+            if checkIfLanternIsOn()==True:
+                LightOn=True
     return LightOn
-        
+
+def checkIfLanternIsOn():
+    LanternOn=False
+    cur = db.cursor()
+    sql = "select itemIsOn from items inner join itemtypes on itemtypes.ID=items.itemtype where name='Lantern' and withPlayer=1;"
+    cur.execute(sql)
+    result=cur.fetchall()
+    if cur.rowcount>=1:
+        for row in result:
+            if row[0]==1:
+                LanternOn=True
+    return LanternOn
 
 def takeKey(item):
     successfulCommand=False
@@ -486,7 +538,7 @@ def directionPossibleIfYesMove(direction):
         sql = "update playercharacter set location = "+str(roomInDirection(direction))+" where id=1;"
         cur.execute(sql)
         moveOk = True
-    elif roomInDirection(direction) != None and roomOpenInDirection(direction) == 0:
+    elif roomInDirection(direction) != None and roomOpenInDirection(direction) == 0 and CheckCurLoc()!="13" and CheckCurLoc()!="24":
         sql = "select name from objects inner join doors on objects.ID=doors.ID where location in (select location from playercharacter where ID=1) and way='"+direction+"';"
         cur.execute(sql)
         result=cur.fetchall()
@@ -494,6 +546,10 @@ def directionPossibleIfYesMove(direction):
             for row in result:
                 Object="%s"%(row)
         print("The %s is locked."%(Object))
+    elif roomInDirection(direction) != None and roomOpenInDirection(direction) == 0 and CheckCurLoc()=="13":
+        print("Down in the well? I don't think that's a good idea.")
+    elif roomInDirection(direction) != None and roomOpenInDirection(direction) == 0 and CheckCurLoc()=="24":
+        print("You can't go that way!")
     else:
         print("You can't go that way!")
     return moveOk
@@ -574,6 +630,14 @@ def displayStatus():
             sanity="%s"%(row)
     print("Health: %s  Sanity: %s"%(health,sanity))
     displayWeaponsAndAmmo()
+    sql = "select oil from playercharacter where ID=1;"
+    cur.execute(sql)
+    result=cur.fetchall()
+    if cur.rowcount>=1:
+        for row in result:
+            oil=int("%s"%(row))
+    if oil>0:
+        print("Lantern oil: %doz"%(oil))
     return
 
 def heal(item):
@@ -641,9 +705,10 @@ def CheckWhereMonsters():
 
 
 def monsterMove():
+    newRoom='None'
     MonsterIDs=[]
     cur = db.cursor()
-    directions='north south west east northwest northeast southwest southeast'.split()
+    directions='north south west east northwest northeast southwest southeast up down'.split()
     sql = "select count(*) from monsters;"
     cur.execute(sql)
     result=cur.fetchall()
@@ -658,17 +723,37 @@ def monsterMove():
             MonsterIDs.append("%s"%(row))
     
     for x in range(0,numberOfMonsters):
+        sql="select name from monstertype inner join monsters on monstertype.ID=monsters.type where monsters.ID=%d;"%(int(MonsterIDs[x]))
+        cur.execute(sql)
+        result=cur.fetchall()
+        if cur.rowcount>=1:
+            for row in result:
+                Monstertype="%s"%(row)
         moved=False
         surroundingRooms=[]
-        for i in range(0,8):
+        for i in range(0,10):
             sql = "select "+directions[i]+" from map inner join room on map.room=room.ID inner join monsters on monsters.location=room.ID where monsters.ID=%d;"%(int(MonsterIDs[x]))
             cur.execute(sql)
             result=cur.fetchall()
             if cur.rowcount>=1:
                 for row in result:
-                    surroundingRooms.append("%s"%(row))
+                    row="%s"%(row)
+                    if row!='None':
+                        surroundingRooms.append(row)
         forbiddenRooms=CheckWhereMonsters()
-        if len(forbiddenRooms)<8:
+        if Monstertype=="Dire Wolf":
+            forbiddenRooms.append('1')
+            forbiddenRooms.append('46')
+        elif Monstertype=="Walking Corpse":
+            forbiddenRooms.append('87')
+        elif Monstertype=="Samuel Blackwater":
+            forbiddenRooms.append('57')
+        permittedSurroundingRooms=len(surroundingRooms)
+        for room in forbiddenRooms:
+            if room in surroundingRooms:
+                permittedSurroundingRooms=permittedSurroundingRooms-1
+        
+        if permittedSurroundingRooms>0:
             if CheckCurLoc() in surroundingRooms and CheckCurLoc() not in forbiddenRooms:
                 sql = "update monsters set location=%r where ID=%r;"%(CheckCurLoc(),int(MonsterIDs[x]))
                 cur.execute(sql)
@@ -683,6 +768,7 @@ def monsterMove():
                         for row in result:
                             newRoom="%s"%(row)
                     if newRoom != 'None' and newRoom not in forbiddenRooms:
+                        
                         sql = "update monsters set location=%r where ID=%r;"%(newRoom,int(MonsterIDs[x]))
                         cur.execute(sql)
                         moved=True
@@ -704,11 +790,32 @@ def Monsters():
     if checkIfMonstersInCurRoom()!="":
         if checkIfMonstersInCurRoom()=='Walking Corpse':
             battleOutcome=WalkingCorpse()
+        elif checkIfMonstersInCurRoom()=='Dire Wolf':
+            battleOutcome=DireWolf()
+        elif checkIfMonstersInCurRoom()=='Samuel Blackwater':
+            battleOutcome=Samuel()
+        elif checkIfMonstersInCurRoom()=='Alexander Gravehill':
+            battleOutcome=Alexander()
     return battleOutcome
         
 
 def DireWolf():
     cur = db.cursor()
+    if checkRoomLight()==True:
+        sql = "select description from monstertype where name='Dire Wolf';"
+        cur.execute(sql)
+        result=cur.fetchall()
+        if cur.rowcount>=1:
+            for row in result:
+                description="%s"%(row)
+        print(description)
+        time.sleep(3)
+    else:
+        print('''Something rushes towards you in the darkness. You can hear sinister growling echoing in this room,
+but you can't see your assaulter. Better do something before it attacks you!''')
+        time.sleep(3)
+    battleOutcome=battle("Dire Wolf")
+    return battleOutcome
     
 def WalkingCorpse():
     cur = db.cursor()
@@ -725,12 +832,50 @@ def WalkingCorpse():
         print('''Something rushes towards you in the darkness. You can hear the clumsy footsteps echoing in this room,
 but you can't see your assaulter. Better do something before it attacks you!''')
         time.sleep(3)
-    battleOutcome=battle("Walking corpse")
+    battleOutcome=battle("Walking Corpse")
+    return battleOutcome
+
+def Samuel():
+    cur = db.cursor()
+    if checkRoomLight()==True:
+        sql = "select description from monstertype where name='Samuel Blackwater';"
+        cur.execute(sql)
+        result=cur.fetchall()
+        if cur.rowcount>=1:
+            for row in result:
+                description="%s"%(row)
+        print(description)
+        time.sleep(3)
+    else:
+        print('''Something rushes towards you in the darkness. You can hear the strong footsteps and berzerk screams echoing in this room,
+but you can't see your assaulter. Better do something before it attacks you!''')
+        time.sleep(3)
+    battleOutcome=battle("Samuel Blackwater")
+    return battleOutcome
+
+def Alexander():
+    cur = db.cursor()
+    if checkRoomLight()==True:
+        sql = "select description from monstertype where name='Alexander Gravehill';"
+        cur.execute(sql)
+        result=cur.fetchall()
+        if cur.rowcount>=1:
+            for row in result:
+                description="%s"%(row)
+        print(description)
+        time.sleep(3)
+    else:
+        print('''Something rushes towards you in the darkness. You can hear the strong footsteps and berzerk screams echoing in this room,
+but you can't see your assaulter. Better do something before it attacks you!''')
+        time.sleep(3)
+    battleOutcome=battle("Alexander Gravehill")
+    if battleOutcome=="win":
+        print("You've made it. The portal to astral vampires dimension is shut...")
     return battleOutcome
 
 def displayWeaponsAndAmmo():
     cur = db.cursor()
-    sql = "select name,loadedammo from itemtypes inner join items on itemtypes.ID=items.itemtype where withPlayer=1 and loadedammo>=0 group by name asc;"
+    sql = "select name,loadedAmmoAndOil from itemtypes inner join items on itemtypes.ID=items.itemtype where withPlayer=1 and loadedAmmoAndOil>=0 group by name asc;"
     cur.execute(sql)
     result=cur.fetchall()
     if cur.rowcount>=1:
@@ -761,14 +906,13 @@ def battle(monster):
             if choice=="1":
                 if checkIfUserHaveItem("Sword")==True or checkIfUserHaveItem("Axe")==True or checkIfUserHaveItem("Revolver")==True or checkIfUserHaveItem("Double barreled shotgun")==True or checkIfUserHaveItem("Sword of uncreation")==True:
                     weapon=input("What weapon do you want to use?")
-                    ChosenWeaponList=weapon.split()
+                    ChosenWeaponList=lower_case(weapon.split())
                     ChosenWeaponList=articles(ChosenWeaponList)
                     weapon=first_upper(" ".join(str(x) for x in ChosenWeaponList))
                     if weapon=="Shotgun":
                         weapon="Double barreled shotgun"
                     if checkIfUserHaveItem(weapon)==True:
-                        attack(weapon)
-                        successfulCommand=True
+                        successfulCommand=attack(weapon)
                     elif checkIfUserHaveItem(weapon)==False and weapon!="Back":
                         print("You don't have such weapon in your possession!")
             
@@ -777,7 +921,7 @@ def battle(monster):
             elif choice=="2":
                 if checkIfUserHaveItem("Revolver")==True or checkIfUserHaveItem("Double barreled shotgun")==True:
                     weapon=input("What weapon do you want to reload?")
-                    ChosenWeaponList=weapon.split()
+                    ChosenWeaponList=lower_case(weapon.split())
                     ChosenWeaponList=articles(ChosenWeaponList)
                     weapon=first_upper(" ".join(str(x) for x in ChosenWeaponList))
                     if weapon=="Shotgun":
@@ -809,6 +953,30 @@ def battle(monster):
                 displayStatus()
             elif choice=="inventory":
                 inventory()
+            elif choice=="3":
+                item=input("Which item do you want to use?")
+                ChosenItemList=lower_case(item.split())
+                ChosenItemList=articles(ChosenItemList)
+                item=first_upper(" ".join(str(x) for x in ChosenItemList))
+                if item=="Bandages":
+                        if checkIfUserHaveItem(item)==True:
+                                heal(item)
+                                print("You bind your wounds and feel a bit of relief.\nHealth +50")
+                                successfulCommand=True
+                        else:
+                                print("You don't have any bandages.")
+                elif item=="Morphine":
+                        if checkIfUserHaveItem(item)==True:
+                                heal(item)
+                                print("You inject the morphine into your arm, and the sudden rush of dopamine fills your brain. It doesn't feel that bad anymore...\nHealth +20, Sanity +50")
+                                successfulCommand=True
+                        else:
+                            print("You don't have morphine.")
+                elif checkIfUserHaveItem(item)==True:
+                        print("You can't do that.")
+                else:
+                        print("Please choose item in your inventory.")
+                
             elif choice=="4":
                 direction=input("In which directions do you want to escape? ")
                 if direction=="e":
@@ -831,15 +999,18 @@ def battle(monster):
                     direction = "southwest"
                 elif direction=="nw":
                     direction = "northwest"
-                if random.randint(1,10)>1:
-                    if directionPossibleIfYesMove(direction)==True:
-                        print("You manage to escape from the foul creature.")
-                        battleOutcome="run"
+                if direction in ('north','south','east','west','northwest','northeast','southeast','southwest','down','up'):
+                    if random.randint(1,10)>3:
+                        if directionPossibleIfYesMove(direction)==True:
+                            print("You manage to escape from the foul creature.")
+                            battleOutcome="run"
+                            successfulCommand=True
+                    else:
+                        print("The horrid creature blocks your way!")
+                        time.sleep(1)
                         successfulCommand=True
                 else:
-                    print("The horrid creature blocks your way!")
-                    time.sleep(1)
-                    successfulCommand=True
+                    print("Please give compass point direction.")
         if battleOutcome=="win":
             checkHealth()
             if checkIfMonstersInCurRoom()!="":
@@ -850,7 +1021,9 @@ def battle(monster):
                 else:
                     print("And misses!")
                     time.sleep(1)
-                battleOutcome=checkPlayerHealth()
+                battleOutcome=checkPlayerHealthAndSanity()
+        if checkIfLanternIsOn()==True:
+            decreaseOil()
     return battleOutcome
 
 def checkHit(weapon):
@@ -919,8 +1092,9 @@ Afterwards there's only silence...''')
     return
 
 def attack(weapon):
+    successfulCommand=False
     cur = db.cursor()
-    sql = "select loadedammo from items inner join itemtypes on items.itemtype=itemtypes.ID where name='"+weapon+"' and withPlayer=1;"
+    sql = "select loadedAmmoAndOil from items inner join itemtypes on items.itemtype=itemtypes.ID where name='"+weapon+"' and withPlayer=1;"
     cur.execute(sql)
     result=cur.fetchall()
     if cur.rowcount>=1:
@@ -931,9 +1105,11 @@ def attack(weapon):
             damageDone=damage(weapon)
             print("And your strike hits doing %d points of damage!"%(damageDone))
             time.sleep(1)
+            successfulCommand=True
         else:
             print("And your strike misses!")
             time.sleep(1)
+            successfulCommand=True
     else:
         ammo=int(ammo)
         if ammo>0:
@@ -941,18 +1117,20 @@ def attack(weapon):
                 damageDone=damage(weapon)
                 print("And your shot hits doing %d points of damage!"%(damageDone))
                 time.sleep(1)
+                successfulCommand=True
             else:
                 print("And your shot misses!")
                 time.sleep(1)
+                successfulCommand=True
             if weapon=="Revolver":
-                sql = "update items inner join itemtypes on items.itemtype=itemtypes.ID set loadedammo=loadedammo-1 where name='"+weapon+"';"
+                sql = "update items inner join itemtypes on items.itemtype=itemtypes.ID set loadedAmmoAndOil=loadedAmmoAndOil-1 where name='"+weapon+"';"
                 cur.execute(sql)
             elif weapon=="Double barreled shotgun":
-                sql = "update items inner join itemtypes on items.itemtype=itemtypes.ID set loadedammo=loadedammo-2 where name='"+weapon+"';"
+                sql = "update items inner join itemtypes on items.itemtype=itemtypes.ID set loadedAmmoAndOil=loadedAmmoAndOil-2 where name='"+weapon+"';"
                 cur.execute(sql)
         else:
             print("You don't have any ammo in that weapon. Reload it!")
-    return
+    return successfulCommand
 
 def checkMaxAmmo(weapon):
     cur = db.cursor()
@@ -980,14 +1158,14 @@ def reload(weapon):
         while Checkloadedammo(weapon)<checkMaxAmmo(weapon) and checkAmmo("bullets")>0:
                 sql = "update playercharacter set bullets=bullets-1 where ID=1;"
                 cur.execute(sql)
-                sql = "update items inner join itemtypes on items.itemtype=itemtypes.ID set loadedammo=loadedammo+1 where name='"+weapon+"' and withPlayer=1;"
+                sql = "update items inner join itemtypes on items.itemtype=itemtypes.ID set loadedAmmoAndOil=loadedAmmoAndOil+1 where name='"+weapon+"' and withPlayer=1;"
                 cur.execute(sql)
         print("With shaking hands, you nervously reload the revolver.")
     elif weapon=="Double barreled shotgun":
         while Checkloadedammo(weapon)<checkMaxAmmo(weapon) and checkAmmo("shells")>0:
                 sql = "update playercharacter set shells=shells-1 where ID=1;"
                 cur.execute(sql)
-                sql = "update items inner join itemtypes on items.itemtype=itemtypes.ID set loadedammo=loadedammo+1 where name='"+weapon+"' and withPlayer=1;"
+                sql = "update items inner join itemtypes on items.itemtype=itemtypes.ID set loadedAmmoAndOil=loadedAmmoAndOil+1 where name='"+weapon+"' and withPlayer=1;"
                 cur.execute(sql)           
         print("With shaking hands, you nervously reload the double barreled shotgun.")
     return
@@ -995,7 +1173,7 @@ def reload(weapon):
         
 def Checkloadedammo(weapon):
     cur = db.cursor()
-    sql = "select loadedammo from items inner join itemtypes on itemtypes.ID=items.itemtype where name='"+weapon+"' and withPlayer=1;"
+    sql = "select loadedAmmoAndOil from items inner join itemtypes on itemtypes.ID=items.itemtype where name='"+weapon+"' and withPlayer=1;"
     cur.execute(sql)
     result=cur.fetchall()
     if cur.rowcount>=1:
@@ -1095,7 +1273,7 @@ def monsterDamage(monster):
     cur.execute(sql)
     return damage
 
-def checkPlayerHealth():
+def checkPlayerHealthAndSanity():
     battleOutcome="win"
     cur = db.cursor()
     sql = "select health from playercharacter where ID=1;"
@@ -1110,10 +1288,23 @@ Soon your vision gets blurry and you can't help but collapse to the ground. Taki
 and finally does the cold embrace of death take you deep down into the oblivion. You are dead...''')
         time.sleep(3)
         battleOutcome="lose"
+    sql = "select sanity from playercharacter where ID=1;"
+    cur.execute(sql)
+    result=cur.fetchall()
+    if cur.rowcount>=1:
+        for row in result:
+            sanity=int("%s"%(row))
+    if sanity<=0 and health>0:
+        print('''These bizzare events are too much for you, and witnessing the abominable horrors of Castle Gravehill has finally driven you mad.
+As you sink deeper into the abyss of yoour own mind, you can't stop feeling the unbearable agony of every strike that your
+enemy unleashes on you...''')
+        time.sleep(3)
+        battleOutcome="lose"
     return battleOutcome
 
 
 def updateAllItemsToPlayer(item):
+    successfulCommand=False
     TakenItems=[]
     cur = db.cursor()
     if item=='':
@@ -1123,6 +1314,7 @@ def updateAllItemsToPlayer(item):
         if cur.rowcount>=1:
                 for row in result:
                     TakenItems.append("%s taken."%(row))
+                    successfulCommand=True
         for item in TakenItems:
             print("%s"%(item))
         sql="update items inner join itemtypes on items.itemtype=itemtypes.ID set withPlayer=1,location=null where location in (select location from playercharacter where ID=1);"
@@ -1135,6 +1327,7 @@ def updateAllItemsToPlayer(item):
             if cur.rowcount>=1:
                     for row in result:
                         print("%s taken."%(row))
+                        successfulCommand=True
             sql = "update items inner join itemtypes on items.itemtype=itemtypes.ID set withPlayer=1,location=null where name like '%"+item+"%' and location in (select location from playercharacter where ID=1);"
             cur.execute(sql)
         else:
@@ -1142,9 +1335,11 @@ def updateAllItemsToPlayer(item):
             cur.execute(sql)
             for x in range(0,cur.rowcount):
                 print(item+" taken.")
-    return
+                successfulCommand=True
+    return successfulCommand
 
 def takeAllAmmo(item):
+    successfulCommand=False
     cur = db.cursor()
     if item=='Ammo':
         sql= "select count(name) from itemtypes inner join items on items.itemtype=itemtypes.ID where name='Box of bullets' and location in (select location from playercharacter where ID=1);"
@@ -1165,10 +1360,12 @@ def takeAllAmmo(item):
             sql = "update playercharacter set bullets=bullets+12 where ID=1;"
             cur.execute(sql)
             print("Box of bullets taken. Bullets +12.")
+            successfulCommand=True
         for x in range(0,shells):
             sql = "update playercharacter set shells=shells+6 where ID=1;"
             cur.execute(sql)
             print("Box of shotgun shells taken. Shells +6.")
+            successfulCommand=True
     else:
         sql = "update items inner join itemtypes on items.itemtype=itemtypes.ID set location=null where name='"+item+"' and location in (select location from playercharacter where ID=1);"
         cur.execute(sql)
@@ -1183,15 +1380,63 @@ def takeAllAmmo(item):
                 sql = "update playercharacter set shells=shells+6 where ID=1;"
                 cur.execute(sql)
                 print("%s taken. Shells +6."%(item))
+    return successfulCommand
+
+def takeAllOil():
+    successfulCommand=False
+    cur = db.cursor()
+    sql = "update items inner join itemtypes on items.itemtype=itemtypes.ID set location=null where name='Lantern oil' and location in (select location from playercharacter where ID=1);"
+    cur.execute(sql)
+    for x in range(0,cur.rowcount):
+        sql = "update playercharacter set oil=oil+25 where ID=1;"
+        cur.execute(sql)
+        print("Lantern oil taken. Oil +25oz")
+        successfulCommand=True
+    return
+        
+
+def takeOil(item):
+    cur = db.cursor()
+    sql = "select items.ID from items inner join itemtypes on items.itemtype=itemtypes.ID where name='"+item+"' and location in (select location from playercharacter where ID=1) limit 1;"
+    cur.execute(sql)
+    result=cur.fetchall()
+    if cur.rowcount>=1:
+        for row in result:
+            ID=int("%s"%(row))
+    sql = "update items set location=null where ID=%d;"%(ID)
+    cur.execute(sql)
+    sql = "update playercharacter set oil=oil+25 where ID=1;"
+    cur.execute(sql)
+    print("%s taken. Oil +25oz"%(item))
     return
 
-
 def takeAll(item):
+    if item=="Golden keys":
+        item="Golden key"
+    if item=="Iron keys":
+        item="Iron key"
+    if item=="Brass keys":
+        item="Brass key"
+    if item=="Silver keys":
+        item="Silver key"
+    if item=="Lanterns":
+        item="Lantern"
+    if item=="Double barreled shotguns" or item=="Shotguns":
+        item="Double barreled shotgun"
+    if item=="Revolvers":
+        item="Revolver"
+    if item=="Ropes":
+        item="Rope"
+    if item=="Glass bottles" or item=="Bottles":
+        item="Glass Bottle"
+    if item=="":
+        item=""
+    successfulCommand=False
     TakenAll=False
     if item=="Boxes" or item=="Ammo" or item=="Boxes of bullets" or item=="Boxes of shotgun shells" or item=="Shells" or item=="Bullets":
         if item=="Boxes" or item=="Ammo":
             if checkIfItemInRoom("Box of bullets")==True or checkIfItemInRoom("Box of shotgun shells")==True:
-                takeAllAmmo('Ammo')
+                successfulCommand=takeAllAmmo('Ammo')
             else:
                 print("You can't see any %s here."%(item.lower()))
         elif item=="Shells" or item=="Boxes of shotgun shells":
@@ -1206,10 +1451,23 @@ def takeAll(item):
                 successfulCommand=True
             else:
                 print("You can't see %s here."%(item.lower()))
+    elif item=="Oil" or item=="Lantern Oil":
+        if checkIfItemInRoom("Lantern oil")==True:
+            takeAllOil()
+            successfulCommand=True
+        else:
+            print("You can't see %s here."%(item.lower()))
     else:
         if item=='':
-            takeAllAmmo('Ammo')
-            updateAllItemsToPlayer(item)
+            successfulCommand=takeAllAmmo('Ammo')
+            if successfulCommand==False:
+                successfulCommand=takeAllOil()
+            else:
+                takeAllOil()
+            if successfulCommand==False:
+                successfulCommand=updateAllItemsToPlayer(item)
+            else:
+                updateAllItemsToPlayer(item)
             TakenAll=True
         elif item == "Keys":
             successfulCommand=updateAllItemsToPlayer("key")
@@ -1219,7 +1477,136 @@ def takeAll(item):
             successfulCommand=True
         else:
             print("You can't see %s here."%(item.lower()))
-    return TakenAll
+    return TakenAll,successfulCommand
+
+def LightLantern():
+    LightOn=False
+    cur = db.cursor()
+    if checkIfUserHaveItem("Lantern")==True:
+        if checkIfUserHaveItem("Matches")==True:
+            if checkOil()==True:
+                if checkIfLanternIsOn()==False:
+                    sql = "update items inner join itemtypes on items.itemtype=itemtypes.ID set itemIsOn=1 where name='Lantern' and withPlayer=1;"
+                    cur.execute(sql)
+                    print("You light the lantern, and the bright rays of light pierce through the surrounding darkness.")
+                    LightOn=True
+                else:
+                    print("Lantern is already lit.")
+            else:
+                print("You need lantern oil.")
+        else:
+            print("You need matches to light the lantern.")    
+    else:
+        print("You don't have the lantern.")
+    return LightOn
+        
+def TurnOffLantern():
+    LightOff=False
+    cur = db.cursor()
+    if checkIfUserHaveItem("Lantern")==True:
+        if checkIfLanternIsOn()==True:
+            sql = "update items inner join itemtypes on items.itemtype=itemtypes.ID set itemIsOn=0 where name='Lantern' and withPlayer=1;"
+            cur.execute(sql)
+            print("You turn off the lantern.")
+            LightOff=True
+        else:
+            print("The lantern is already turned off.")
+    else:
+        print("You don't have the lantern.")
+    return LightOff
+
+def checkOil():
+    gotOil=True
+    cur = db.cursor()
+    sql = "select oil from playercharacter where ID=1;"
+    cur.execute(sql)
+    result=cur.fetchall()
+    if cur.rowcount>=1:
+        for row in result:
+            oil=int("%s"%(row))
+    if oil<=0:
+        gotOil=False
+    return gotOil
+
+def decreaseOil():
+    cur = db.cursor()
+    sql = "update playercharacter set oil=oil-1 where ID=1;"
+    cur.execute(sql)
+    return
+
+def runOutOfOil():
+    NoOil=False
+    cur = db.cursor()
+    if checkIfLanternIsOn()==True:
+        sql = "update items inner join itemtypes on items.itemtype=itemtypes.ID set itemIsOn=0 where name='Lantern' and withPlayer=1;"
+        cur.execute(sql)
+        print("Your out of lantern oil.")
+        NoOil=True
+    return NoOil
+
+def gameItems():
+    gameItemsList=[]
+    cur = db.cursor()
+    sql = "select name from itemtypes;"
+    cur.execute(sql)
+    result=cur.fetchall()
+    if cur.rowcount>=1:
+        for row in result:
+            gameItemsList.append("%s"%(row))
+    return gameItemsList
+
+def rope():
+    cur = db.cursor()
+    sql = "update map set downOpen=1 where room=13;"
+    cur.execute(sql)
+    sql = "update items inner join itemtypes on items.itemtype=itemtypes.ID set withPlayer=0,location=13 where name='Rope' and withPlayer=1;"
+    cur.execute(sql)
+    print("You tie the rope on the edge of the well.")
+    return
+
+def bed():
+    cur = db.cursor()
+    if roomOpenInDirection("west")==False:
+        sql = "update map set eastOpen=1 where room=24;"
+        cur.execute(sql)
+        print("By great effort you manage to move the bed. There's a hole in the western wall behind the bed!")
+    else:
+        sql = "update map set eastOpen=0 where room=24;"
+        cur.execute(sql)
+        print("By great effort you manage to move the bed. The hole is concealed now.")
+    return
+
+def spawnMonster(monster,loc):
+    cur = db.cursor()
+    sql = "select healthStart from monstertype where ID=%d;"%(monster)
+    cur.execute(sql)
+    result=cur.fetchall()
+    if cur.rowcount>=1:
+        for row in result:
+            health=int("%s"%(row))
+    sql = "insert into monsters(health,type,location) values(%d,%d,%d);"%(health,monster,loc)
+    cur.execute(sql)
+    return
+
+def printItemDesc(item):
+    cur = db.cursor()
+    sql = "select description from itemtypes where name='"+item+"';"
+    cur.execute(sql)
+    result=cur.fetchall()
+    if cur.rowcount>=1:
+        for row in result:
+            print("%s"%(row))
+    return
+
+def printObjectDesc(Object):
+    cur = db.cursor()
+    sql = "select description from objects where name='"+Object+"' and location in (select location from playercharacter where ID=1);"
+    cur.execute(sql)
+    result=cur.fetchall()
+    if cur.rowcount>=1:
+        for row in result:
+            print("%s"%(row))
+    return
 
 #PÄÄOHJELMA ALKAA
 
@@ -1240,8 +1627,18 @@ print("\n")
 print("Welcome to the Castle Gravehill!\n")
 time.sleep(1)
 end = "temp"
+Trigger=False
+Trigger2=False
 
 while (end != "quit"):
+    TriggerIsOn=False
+    TriggerIsOn2=False
+    if CheckCurLoc()=="25" and checkIfRoomVisited()==False and Trigger==False:
+        Trigger=True
+        TriggerIsOn=True
+    if CheckCurLoc()=="46" and checkIfRoomVisited()==False and Trigger2==False:
+        Trigger2=True
+        TriggerIsOn2=True
     if checkRoomLight() == True and checkIfRoomVisited() == False:
         printCharCurLocName()
         printCharCurLocDesc()
@@ -1253,7 +1650,13 @@ while (end != "quit"):
     else:
         printCharCurLocName()
         displayItemsInRoom()
-    time.sleep(1)
+    if TriggerIsOn==True:
+        print("You hear a blood chilling howl from the castle's ward. That's not an ordinary wolf...")
+        spawnMonster(1,4)
+    if TriggerIsOn2==True:
+        spawnMonster(2,50)
+        spawnMonster(2,49)
+        spawnMonster(2,48)
     move_look=False
     battleOutcome=Monsters()
     if battleOutcome=="lose":
@@ -1265,6 +1668,7 @@ while (end != "quit"):
         gameover=False
     com="temp"
     while move_look == False and end != "quit" and gameover==False:
+        JustLighted=False
         successfulCommand=False
         battleOutcome=Monsters()
         if battleOutcome=="lose":
@@ -1280,7 +1684,7 @@ while (end != "quit"):
             if command=="":
                 print("Whatever")
             else:
-                (com,object1,withSentence,Items)=parser(command)
+                (com,object1,withSentence,OnSentence,Items)=parser(command)
             
             #if-rakenne, missä käydään kaikki komennot läpi
                 if com == "commands" and withSentence==False and Items==['']:
@@ -1292,19 +1696,19 @@ while (end != "quit"):
                     printCharCurLocName()    
                     printCharCurLocDesc()
                     displayItemsInRoom()
-                elif com == "take" and withSentence==False:
+                elif com == "take" and withSentence==False or com=="pick up" and withSentence==False:
                     Alltaken=False
                     if Items!=['']:
                         for item in Items:
                             if "All " in item or item=="All":
                                 if item=="All":
                                     item=''
-                                    Alltaken=takeAll(item)
+                                    (Alltaken,successfulCommand)=takeAll(item)
                                 else:
                                     item=item.split()
                                     del item[0]
                                     item=first_upper(" ".join(str(x) for x in item))
-                                    Alltaken=takeAll(item)
+                                    (Alltaken,successfulCommand)=takeAll(item)
                             elif item=="Box" or item=="Ammo" or item=="Box of bullets" or item=="Box of shotgun shells" or item=="Shells" or item=="Bullets":
                                 if item=="Box" or item=="Ammo":
                                     if checkIfItemInRoom("Box of bullets")==True and checkIfItemInRoom("Box of shotgun shells")==True:
@@ -1335,6 +1739,20 @@ while (end != "quit"):
                                         successfulCommand=True
                                     else:
                                         print("You can't see %s here."%(item.lower()))
+                            elif item=="Oil" or item=="Lantern oil":
+                                if item=="Oil":
+                                    item="Lantern oil"
+                                if checkIfItemInRoom(item)==True:
+                                    takeOil(item)
+                                    successfulCommand=True
+                                else:
+                                    print("You can't see %s here."%(item.lower()))
+                            elif item=="Rope" and wellOpen()==True and CheckCurLoc()=="13":
+                                updateItemToPlayer(item)
+                                cur = db.cursor()
+                                sql = "update map set downOpen=0 where room=13;"
+                                cur.execute(sql)
+                                successfulCommand=True
                             else:    
                                 if item == "Key":
                                     successfulCommand=takeKey(item)
@@ -1357,6 +1775,29 @@ while (end != "quit"):
                 elif com == "inventory" and withSentence==False and Items==['']:
                     print("Player Items:")
                     inventory()
+
+                elif com=="examine" and withSentence==False and OnSentence==False:
+                    if Items!=['']:
+                        if len(Items)==1:
+                            if Items[0]=="Shotgun":
+                                Items[0]="Double barreled shotgun"
+                            if Items[0]=="Oil":
+                                Items[0]="Lantern oil"
+                            if Items[0]=="Shells":
+                                Items[0]="Box of shotgun shells"
+                            if Items[0]=="Bullets":
+                                Items[0]="Box of bullets"
+                            if checkIfUserHaveItem(Items[0])==True or checkIfItemInRoom(Items[0])==True:
+                                printItemDesc(Items[0])
+                            elif checkIfObjectInRoom(Items[0].lower())==True:
+                                printObjectDesc(Items[0].lower())
+                            else:
+                                print("You can't find such thing anywhere nearby.")
+                        else:
+                            print("One thing at a time, my friend.")
+                    else:
+                        print("Examine what?")
+                            
                 elif com == "unlock":
                     if withSentence==False:
                         if len(Items)==1 and "All " not in Items[0]:
@@ -1407,18 +1848,18 @@ while (end != "quit"):
                 elif com=="status" and withSentence==False and Items==['']:
                     displayStatus()
 
-                elif com=="use" and withSentence==False:
+                elif com=="use" and withSentence==False and OnSentence==False:
                     if len(Items)==1:
                         if Items[0]=="Bandages":
-                            if checkIfPlayerHaveItem(Item[0])==True:
-                                heal(Item[0])
+                            if checkIfUserHaveItem(Items[0])==True:
+                                heal(Items[0])
                                 print("You bind your wounds and feel a bit of relief.\nHealth +50")
                                 successfulCommand=True
                             else:
                                 print("You don't have any bandages.")
                         elif Items[0]=="Morphine":
-                            if checkIfPlayerHaveItem(Item[0])==True:
-                                heal(Item[0])
+                            if checkIfUserHaveItem(Items[0])==True:
+                                heal(Items[0])
                                 print("You inject the morphine into your arm, and the sudden rush of dopamine fills your brain. It doesn't feel that bad anymore...\nHealth +20, Sanity +50")
                                 successfulCommand=True
                         elif checkIfUserHaveItem(Items[0])==True:
@@ -1461,7 +1902,88 @@ while (end != "quit"):
                                 print("You don't have such weapon.")
                     else:
                         print("One thing at a time, my friend.")
-        
+                elif com=="light up" or com=="light" or com=="turn on" or com=="turn off" or com=="shut off":
+                    if withSentence==False:
+                        if len(Items)==1:
+                            if Items[0]=="Lantern":
+                                if com=="light" or com=="light up" or com=="turn on":
+                                    shouldDisplayDescription=checkRoomLight()
+                                    if LightLantern()==True:
+                                        successfulCommand=True
+                                        if shouldDisplayDescription==False:
+                                            move_look=True
+                                        JustLighted=True
+                                elif com=="turn off" or com=="shut off":
+                                    if TurnOffLantern()==True:
+                                        successfulCommand=True
+                                        if checkRoomLight()==False:
+                                            move_look=True
+                            else:
+                                if checkIfUserHaveItem(Items[0])==True:
+                                    print("You can't do that.")
+                                elif Items[0] in gameItems():
+                                    print("You don't have %s."%(Items[0].lower()))
+                                else:
+                                    print("I didn't quite understand.")
+                        else:
+                            understandable=True
+                            for item in Items:
+                                if item not in gameItems():
+                                    understandable=False
+                            if understandable==True:
+                                    print("One thing at a time, my friend.")
+                            else:
+                                    print("I didn't understand, please try again.")
+                    else:
+                        if object1=="lantern":
+                            if len(Items)==1 and Items[0]=="Matches":
+                                if com=="light" or com=="light up" or com=="turn on":
+                                    shouldDisplayDescription=checkRoomLight()
+                                    if LightLantern()==True:
+                                        successfulCommand=True
+                                        if shouldDisplayDescription==False:
+                                            move_look=True
+                                        JustLighted=True
+                                else:
+                                    print("You can't do that.")
+                            elif len(Items)==1:
+                                if com=="light" or com=="light up" or com=="turn on":
+                                    if checkIfUserHaveItem(Items[0])==True:
+                                        print("You can't do that.")
+                                    elif Items[0] in gameItems():
+                                        print("You don't have %s."%(Items[0].lower()))
+                                    else:
+                                        print("I didn't quite understand.")
+                                else:
+                                    print("I don't understand, please try again.")
+                            else:
+                                if com=="light" or com=="light up" or com=="turn on":
+                                    understandable=True
+                                    for item in Items:
+                                        if item not in gameItems():
+                                            understandable=False
+                                    if understandable==True:
+                                        print("One thing at a time, my friend.")
+                                    else:
+                                        print("I didn't understand, please try again.")
+                                else:
+                                     print("I didn't understand, please try again.")
+                        else:
+                            if com=="light up" or com=="light" or com=="turn on":
+                                if first_upper(object1) in gameItems():
+                                    if len(Items)==1:
+                                        if checkIfUserHaveItem(Items[0])==True:
+                                            print("You can't do that.")
+                                        elif Items[0] in gameItems():
+                                            print("You don't have %s."%(Items[0].lower()))
+                                        else:
+                                            print("I didn't quite understand.")
+                                else:
+                                    print("I don't understand, please try again.")
+                            else:
+                                print("I don't understand, please try again.")
+                        
+                
                 elif withSentence==False and com == "east" and Items==[''] or withSentence==False and com == "e" and Items==[''] or withSentence==False and com == "west" and Items==[''] or withSentence==False and com == "w" and Items==[''] or withSentence==False and com == "north" and Items==[''] or withSentence==False and com == "n" and Items==[''] or withSentence==False and com == "south" and Items==[''] or withSentence==False and com == "s" and Items==[''] or withSentence==False and com == "down" and Items==[''] or withSentence==False and com == "d" and Items==[''] or withSentence==False and com == "up" and Items==[''] or withSentence==False and com == "u" and Items==[''] or withSentence==False and com == "northeast" and Items==[''] or withSentence==False and com == "ne" and Items==[''] or withSentence==False and com == "southeast" and Items==[''] or withSentence==False and com == "se" and Items==[''] or withSentence==False and com == "southwest" and Items==[''] or withSentence==False and com == "sw" and Items==[''] or withSentence==False and com == "northwest" and Items==[''] or withSentence==False and com== "nw" and Items==['']: 
                     if com=="e":
                         com = "east";
@@ -1488,15 +2010,93 @@ while (end != "quit"):
                         print("\n")
                         move_look = True
                         successfulCommand=True
+                elif com=="wait" and withSentence==False and Items==['']:
+                    successfulCommand=True
+                elif com=="climb down":
+                    if withSentence==True:
+                        if len(Items)==1:
+                            if Items[0] in gameItems():
+                                if object1=='':
+                                    print("Climb down where?")
+                                elif object1=="in well":
+                                    if Items[0]=="Rope":
+                                        if CheckCurLoc()=="13":
+                                            if checkIfUserHaveItem("Rope")==True:
+                                                rope()
+                                                directionPossibleIfYesMove("down")
+                                                move_look=True
+                                                successfulCommand=True
+                                            else:
+                                                print("You don't have the rope.")
+                                        else:
+                                            print("There's no well here.")
+                                    else:
+                                        print("You can't do that.")
+                                else:
+                                    print("I'm not sure what you are trying to do.")
+                            else:
+                                print("I didn't quite understand")
+                        else:
+                            print("I didn't understand, my friend.")
+                    else:
+                        if len(Items)==1:
+                            if Items[0]=='':
+                                print("Climb down where?")
+                            elif Items[0]=="In well":
+                                if CheckCurLoc()=="13":
+                                    print("I can't climb down without some useful tool.")
+                                else:
+                                    print("There's no well here.")
+                            else:
+                                print("I'm not sure what you are trying to do.")
+                        else:
+                            print("I didn't understand, my friend.")
+                                            
+                elif com=="tie" and OnSentence==True or com=="knot" and OnSentence==True:
+                    if len(Items)==1:
+                        if object1=="rope":
+                            if Items[0]=="Well" or Items[0]=="Edge of well":
+                                if CheckCurLoc()=="13":
+                                    if checkIfUserHaveItem("Rope")==True:
+                                        rope()
+                                        successfulCommand=True
+                                    else:
+                                        print("You don't have the rope.")
+                                else:
+                                    print("There's no well here.")
+                            else:
+                                print("I didn't understand, my friend.")
+                        else:
+                            print("I'm not sure what you are trying to do.")
+                    else:
+                        print("I did not understand, please try again")
+                elif com=="move" and withSentence==False and OnSentence==False:
+                    if len(Items)==1:
+                        if Items[0]=="Bed":
+                            if CheckCurLoc()=="24":
+                                bed()
+                                successfulCommand=True
+                            else:
+                                print("Can't see any movable beds here.")
+                        else:
+                            print("I'm not sure what you are trying to do.")
+                    else:
+                        print("I didn't understand, please try again.")
                 else:
-                    print("I did not understand, please try again")
+                    print("I didn't understand, please try again.")
+                    
         if battleOutcome!="run":
             monsterMove()
+        if checkIfLanternIsOn()==True and JustLighted==False:
+            decreaseOil()
+        if checkOil()==False:
+            if runOutOfOil()==True:
+                shouldDisplayDescription=checkRoomLight()
+                if shouldDisplayDescription==False:
+                    move_look=True
     if gameover==True:
-        if GameOver()==True:
-            end="quit"
-        else:
-            gameover=False
+        (end,Trigger,Trigger2)=GameOver()
+        gameover=False
 
 # Perutaan tietokantaan tehdyt muutokset
 db.rollback()
